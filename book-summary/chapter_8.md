@@ -5,8 +5,9 @@
 
 ### 아파치 스파크의 스트림 처리 엔진 진화
 스트림 처리란 연속적으로 들어오는 데이터 흐름을 실시간 처리하는 것이다.
-스트림 처리 시스템은 단일 노드 처리 엔진에서 멀티 노드 분산 처리 엔진으로 진화했다.
+빅데이터의 등장으로 단일 노드 처리 엔진에서 멀티 노드 분산 처리 엔진으로 진화했다.
 또한 전통적인 분산 스트림 처리는 레코드 단위 처리 모델로 구현되어 여러 노드에서 입력받은 레코드를 한번에 하나씩 검사해 걸러내고, 다른 노드에서 한번에 하나의 레코드를 처리하는 방식으로 동작한다.
+![img](https://file.notion.so/f/s/64f88273-1c96-41f8-87c9-2cb7a68094cf/Untitled.png?id=5e24c49a-c1e4-4d19-a89a-dafbd86f7b18&table=block&spaceId=333f96cf-396d-45ff-8331-232d41bd4d55&expirationTimestamp=1684242806691&signature=F1kC_ceugJBQvkiaa95nELUB3Zn3dIO0Z1kfF-isy5U&downloadName=Untitled.png)
 검사 노드와 처리 노드가 분리되어 동작하는 이 모델은 짧은 응답 시간의 장점이 있지만 특정 노드에 장애가 오면 전체적인 작업에 영향이 간다.
 
 ### 마이크로 배치 스트림 처리의 출현
@@ -40,6 +41,35 @@
 
 
 ### 정형화 스트리밍 쿼리의 기초 - 5단계
+
+**1단계: 입력 소스 지정**
+
+배치 데이터 소스에서 읽어 들일 때는 DataFrameReader 객체를 만들어주는 spark.read를 썼지만, 스트리밍 소스에 대해서는 DataStreamReader를 만들어주는 spark.readStream을 사용해야 한다.
+
+    - DataStreamReader는 DataFrameReader와 동일한 함수들을 대부분 갖고 있다.
+    ```python
+    # 파이썬 예제
+    spark = SparkSession…
+
+    lines = (spark.readStream.format(“socket”)
+
+    .option(“host”,”localhost”)
+
+    .option(“port”,9999)
+
+    .load())
+    ```
+    localhost:9999에서 개행 문자로 구분되는 텍스트 데이터를 읽어 무한 테이블 형태의 lines 데이터 프레임을 생성한다.
+- spark.read를 쓸 때처럼 스트리밍 데이터를 즉시 읽어 들이는 것은 아니다.
+- 위 코드는 실제로 스트리밍 쿼리가 동작할 때 데이터를 읽어들이기 위해 필요한 설정들을 정의하는 것일 뿐이다.
+- 소켓 외에도 아파치 스파크는 그 외 DataFrameReader가 지원하는 다양한 파일 기반 포맷(파케이, ORC, JSON 등)에서 데이터 스트림을 읽어들일 수 있게 지원한다.
+- 스트리밍 쿼리는 유니언이나 조인같은 데이터 프레임 연산을 써서 조합하는 식으로 다중 입력 소스를 지정할 수도 있다.
+
+**2단계: 데이터 변형**
+- counts 변수는 실행 중인 단어 세기 프로그램을 나타내는 ‘스트리밍 데이터 프레임’이며 한번 스트리밍 쿼리가 시작되고 스트리밍 입력이 지속적으로 처리되면서 계산을 수행하게 된다.
+- lines  스트리밍 데이터 프레임에 변형을 수행하는 이 연산들은 lines가 일반적인 배치 데이터 프레임이었다 하더라도 정확히 동일한 방식으로 동작한다.
+- 일반적으로 배치 데이터 프레임에 쓰이는 대부분의 데이터 프레임은 스트리밍 데이터 프레임에도 적용될 수 있다.
+
 
 ### 실행 중인 스트리밍 쿼리의 내부
 ### 실행 중인 스트리밍 쿼리의  내부
@@ -135,6 +165,7 @@ Exactly-once(정확한 일회 실행) 보장하기 위해서는 전체적으로 
 
         streamingQuery.awaitTermination()
         ```
+        참고 - https://medium.com/@sasidharan-r/how-to-handle-corrupt-or-bad-record-in-apache-spark-custom-logic-pyspark-aws-430ddec9bb41
 
     - 소스와 싱크 옵션
         읽기 스트림과 쓰기 스트림이 변경될 수 있는지는 싱크와 소스의 종류에 따라 다르다.
@@ -155,3 +186,56 @@ Exactly-once(정확한 일회 실행) 보장하기 위해서는 전체적으로 
 
 
 
+## 파일
+
+- 정형화 스트리밍은 배치 처리에서 지원하는 것과 동일한 포맷의 파일들로부터 데이터 스트림을 읽거나 쓰는 것을 지원(ex. 일반 텍스트 파일, CSV, JSON 등)
+
+### 파일 기반의 정형화 스트리밍 처리 방법
+
+1. **파일에서 읽기**
+정형화 스트리밍은 디렉터리에 쓰여진 파일들을 하나의 데이터 스트림으로 간주 할 수 있음
+    
+    ```python
+    from pyspark.sql.types import *
+    inputDirectoryOfJsonFiles = ...
+    fileSchema = (StructType()
+     .add(StructField("key", IntegerType()))
+     .add(StructField("value", IntegerType())))
+    inputDF = (spark
+     .readStream
+     .format("json")
+     .schema(fileSchema)
+     .load(inputDirectoryOfJsonFiles))
+    ```
+    
+
+- **반환된 스트리밍 데이터 프레임은 특정 스키마를 갖게 된다.**
+
+**[파일을 이용할 때 기억할 몇가지 키포인트]**
+
+- 모든 파일들은 동일 포맷이어야 하며, 동일 포맷을 가질 것이라 가정
+=> 위 가정이 어긋나면 잘못된 파싱 결과가 나오거나(ex. 모든 값이 null이 되는 등) 쿼리가 실패할 것이다.
+- 각각의 파일은 디렉터리에서 완전한 하나의 파일로 존재해야한다.
+= 읽는 시점에 전체 파일이 읽기 가능해야하며, 수정되거나 업데이트 되면 안된다.
+- 처리해야 할 새로운 파일이 여러 개가 있을 때 처리량 제한 등으로 인해 그중 일부만 처리될 수 있으며 가장 빠른 타임스탬프를 갖고 있는 파일들이 먼저 선택된다.
+
+1. **파일에 쓰기**
+- 정형화 스트리밍은 읽기에 쓰이는 동일 포맷 파일에 스트리밍 쿼리 결과를 쓸 수 있다.
+- 단, 기존 데이터 파일 수정이 쉽지 않음(업데이트나 전체 모드에서 필요)
+- 파일을 새로 추가는 것은 쉬우므로 추가 모드만 지원(데이터를 디렉토리에 추가하는 셈)
+```python
+#파일에 쓰기 예제
+outputDir = ...
+checkpointDir = ...
+resultDF = ...
+streamingQuery = (resultDF.writeStream
+ .format("parquet")
+ .option("path", outputDir) #"path" 옵션 대신 직접적으로 start(outputDir)에 지정할 수도 있다.
+ .option("checkpointLocation", checkpointDir)
+ .start())
+```
+
+**[기억할 몇 가지 사항]**
+
+- 정형화 스트리밍은 디렉터리에 쓰이는 데이터 파일들의 로그를 유지하며 파일 쓰기 할 때 전체적으로 정확한 일회 처리를 보장. 다른 처리 엔진들은 이런 로그의 존재를 알 수 없으므로 동일하게 보장을 제공하지 못할 수 있다.
+- 재시작 사이에 결과 데이터 프레임의 스키라믈 변경한다면, 결과 디렉터리의 파일들이 서로 다른 스키마를 갖고 섞여 있을 수 있다.

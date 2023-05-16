@@ -3,10 +3,6 @@ from pyspark.sql.types import BooleanType
 from pyspark.sql.functions import *
 
 def isCorruptedUdf(value):
-    try:
-        str(value)
-    except:
-        return False
     return True
 
 
